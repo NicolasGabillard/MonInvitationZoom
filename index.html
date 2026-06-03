@@ -83,27 +83,30 @@
     window.onload = () => {
         const params = new URLSearchParams(window.location.search);
 
-        // Vérifier Deep Link (id, pwd, name, lang)
+        // Vérifier Deep Link (id, pwd, name, lang, label)
         if (params.has('id') && params.has('name')) {
             const id = params.get('id');
             const pwd = params.get('pwd') || '';
             const name = params.get('name');
             const lang = params.get('lang') || 'fr';
+            const label = params.get('label') || '';
 
             localStorage.setItem('meetingId', id);
             localStorage.setItem('password', pwd);
             localStorage.setItem('displayName', name);
+            localStorage.setItem('shortcutLabel', label);
             localStorage.setItem('isConfigured', 'true');
 
-            startCountdown(id, pwd, name);
+            startCountdown(id, pwd, name, label);
             return;
         }
 
         // Sinon charger depuis localStorage
         const id = localStorage.getItem('meetingId');
         const name = localStorage.getItem('displayName');
+        const label = localStorage.getItem('shortcutLabel') || '';
         if (id && name) {
-            startCountdown(id, localStorage.getItem('password') || '', name);
+            startCountdown(id, localStorage.getItem('password') || '', name, label);
         }
     };
 
@@ -120,15 +123,18 @@
         localStorage.setItem('meetingId', id);
         localStorage.setItem('password', pwd);
         localStorage.setItem('displayName', name);
+        localStorage.setItem('shortcutLabel', "");
         localStorage.setItem('isConfigured', 'true');
 
-        startCountdown(id, pwd, name);
+        startCountdown(id, pwd, name, "");
     }
 
-    function startCountdown(id, pwd, name) {
+    function startCountdown(id, pwd, name, label) {
         document.getElementById('config-ui').classList.add('hidden');
         document.getElementById('launch-ui').classList.remove('hidden');
-        document.getElementById('launch-details').innerText = `ID: ${id}\nNom: ${name}`;
+
+        const displayLabel = label ? `${label}\n` : "";
+        document.getElementById('launch-details').innerText = `${displayLabel}ID: ${id}\nNom: ${name}`;
 
         isCancelled = false;
         launchTimeout = setTimeout(() => {
