@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ma Réunion Zoom</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#2196F3">
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f2f5;
+            text-align: center;
+        }
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            max-width: 400px;
+            width: 90%;
+        }
+        h1 { color: #1a73e8; margin-bottom: 1rem; }
+        input {
+            width: 100%;
+            padding: 10px;
+            margin: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            box-sizing: border-box;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            margin-top: 1rem;
+            border: none;
+            border-radius: 6px;
+            background-color: #1a73e8;
+            color: white;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+        button:hover { background-color: #1557b0; }
+        #status { margin-top: 1rem; color: #666; font-size: 0.9rem; }
+        .hidden { display: none; }
+        #cancel-area { margin-top: 20px; }
+        #btn-cancel { background-color: #dc3545; }
+        #btn-cancel:hover { background-color: #a71d2a; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="config-ui">
+    <h1>Ma Réunion Zoom</h1>
+    <input type="text" id="meetingId" placeholder="ID de réunion">
+    <input type="text" id="password" placeholder="Mot de passe">
+    <input type="text" id="displayName" placeholder="Votre nom">
+    <button onclick="saveAndJoin()">Enregistrer et Rejoindre</button>
+    <p id="status"></p>
+</div>
+
+<div class="container hidden" id="launch-ui">
+    <h1>Connexion en cours...</h1>
+    <p id="launch-details"></p>
+    <div id="cancel-area">
+        <button id="btn-cancel" onclick="cancelLaunch()">Annuler</button>
+        <p style="font-size: 0.8rem; margin-top: 10px;">Appuyez longuement sur Annuler pour modifier</p>
+    </div>
+</div>
+
+<script>
+    let launchTimeout;
+    let isCancelled = false;
+
+    // Charger les réglages au démarrage
+    window.onload = () => {
+        const params = new URLSearchParams(window.location.search);
+
+        // Vérifier Deep Link (id, pwd, name, lang)
+        if (params.has('id') && params.has('name')) {
+            const id = params.get('id');
+            const pwd = params.get('pwd') || '';
+            const name = params.get('name');
+            const lang = params.get('lang') || 'fr';
+
+            localStorage.setItem('meetingId', id);
+            localStorage.setItem('password', pwd);
+            localStorage.setItem('displayName', name);
+            localStorage.setItem('isConfigured', 'true');
+
+            startCountdown(id, pwd, name);
+            return;
+        }
+
+        // Sinon charger depuis localStorage
+        const id = localStorage.getItem('meetingId');
+        const name = localStorage.getItem('displayName');
+        if (id && name) {
+            startCountdown(id, localStorage.getItem('password') || '', name);
+        }
+    };
+
+    function saveAndJoin() {
+        const id = document.getElementById('meetingId').value;
+        const pwd = document.getElementById('password').value;
+        const name = document.getElementById('displayName').value;
+
+        if (!id || !name) {
+            alert("Veuillez remplir au moins l'ID et le Nom");
+            return;
+        }
+
+        localStorage.setItem('meetingId', id);
+        localStorage.setItem('password', pwd);
+        localStorage.setItem('displayName', name);
+        localStorage.setItem('isConfigured', 'true');
+
+        startCountdown(id, pwd, name);
+    }
+
+    function startCountdown(id, pwd, name) {
+        document.getElementById('config-ui').classList.add('hidden');
+        document.getElementById('launch-ui').classList.remove('hidden');
+        document.getElementById('launch-details').innerText = `ID: ${id}\nNom: ${name}`;
+
+        isCancelled = false;
+        launchTimeout = setTimeout(() => {
+            if (!isCancelled) {
+                joinZoom(id, pwd, name);
+            }
+        }, 2000);
+    }
+
+    function joinZoom(id, pwd, name) {
+        const encodedName = encodeURIComponent(name);
+        const zoomUri = `zoomus://zoom.us/join?confno=${id}&pwd=${pwd}&uname=${encodedName}`;
+        window.location.href = zoomUri;
+
+        // Optionnel : replier sur le lien web si zoomus:// échoue (difficile à détecter en JS pur)
+        // setTimeout(() => { window.location.href = `https://zoom.us/j/${id}?pwd=${pwd}`; }, 1000);
+    }
+
+    function cancelLaunch() {
+        isCancelled = true;
+        clearTimeout(launchTimeout);
+        document.getElementById('launch-ui').classList.add('hidden');
+        document.getElementById('config-ui').classList.remove('hidden');
+
+        // Pré-remplir les champs
+        document.getElementById('meetingId').value = localStorage.getItem('meetingId') || '';
+        document.getElementById('password').value = localStorage.getItem('password') || '';
+        document.getElementById('displayName').value = localStorage.getItem('displayName') || '';
+    }
+
+    // Gestion de l'appui long pour modifier (comme sur Android)
+    const btnCancel = document.getElementById('btn-cancel');
+    let longPressTimer;
+    btnCancel.onmousedown = btnCancel.ontouchstart = () => {
+        longPressTimer = setTimeout(() => {
+            cancelLaunch();
+        }, 800);
+    };
+    btnCancel.onmouseup = btnCancel.onmouseleave = btnCancel.ontouchend = () => {
+        clearTimeout(longPressTimer);
+    };
+
+    // Enregistrer le Service Worker
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('sw.js');
+    }
+</script>
+</body>
+</html>
