@@ -13,7 +13,7 @@
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            height: 100vh;
+            min-height: 100vh;
             margin: 0;
             background-color: #f0f2f5;
             text-align: center;
@@ -23,14 +23,16 @@
             padding: 2rem;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-            max-width: 400px;
+            max-width: 450px;
             width: 90%;
+            margin: 20px 0;
         }
         h1 { color: #1a73e8; margin-bottom: 1rem; }
-        input {
+        .form-group { text-align: left; margin-bottom: 15px; }
+        label { display: block; font-size: 0.9rem; color: #555; margin-bottom: 5px; }
+        input, select {
             width: 100%;
             padding: 10px;
-            margin: 8px 0;
             border: 1px solid #ddd;
             border-radius: 6px;
             box-sizing: border-box;
@@ -48,109 +50,228 @@
             transition: background 0.3s;
         }
         button:hover { background-color: #1557b0; }
-        #status { margin-top: 1rem; color: #666; font-size: 0.9rem; }
         .hidden { display: none; }
-        #cancel-area { margin-top: 20px; }
-        #btn-cancel { background-color: #dc3545; }
-        #btn-cancel:hover { background-color: #a71d2a; }
+        #btn-cancel { background-color: #dc3545; margin-top: 20px; }
+
+        /* Liste des réunions */
+        .meeting-list { margin-top: 20px; text-align: left; border-top: 1px solid #eee; padding-top: 20px; }
+        .meeting-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 6px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .meeting-item:hover { background: #e9ecef; }
+        .meeting-info { flex-grow: 1; }
+        .meeting-name { font-weight: bold; color: #1a73e8; }
+        .meeting-id { font-size: 0.8rem; color: #666; }
+        .btn-delete { width: auto; padding: 5px 10px; margin: 0; background: #ff4444; font-size: 0.8rem; }
     </style>
 </head>
 <body>
 
 <div class="container" id="config-ui">
-    <h1>Ma Réunion Zoom</h1>
-    <input type="text" id="meetingId" placeholder="ID de réunion">
-    <input type="text" id="password" placeholder="Mot de passe">
-    <input type="text" id="displayName" placeholder="Votre nom">
-    <button onclick="saveAndJoin()">Enregistrer et Rejoindre</button>
-    <p id="status"></p>
-</div>
+    <h1 id="txt-title">Configuration</h1>
 
-<div class="container hidden" id="launch-ui">
-    <h1>Connexion en cours...</h1>
-    <p id="launch-details"></p>
-    <div id="cancel-area">
-        <button id="btn-cancel" onclick="cancelLaunch()">Annuler</button>
-        <p style="font-size: 0.8rem; margin-top: 10px;">Appuyez longuement sur Annuler pour modifier</p>
+    <div class="form-group">
+        <label id="lbl-label">Nom de la réunion (Raccourci)</label>
+        <input type="text" id="label" placeholder="">
+    </div>
+    <div class="form-group">
+        <label id="lbl-id">ID de réunion</label>
+        <input type="text" id="meetingId">
+    </div>
+    <div class="form-group">
+        <label id="lbl-pwd">Mot de passe</label>
+        <input type="text" id="password">
+    </div>
+    <div class="form-group">
+        <label id="lbl-name">Votre nom d'affichage</label>
+        <input type="text" id="displayName">
+    </div>
+    <div class="form-group">
+        <label id="lbl-lang">Langue</label>
+        <select id="language" onchange="changeLang(this.value)">
+            <option value="fr">Français</option>
+            <option value="es">Español</option>
+            <option value="en">English</option>
+        </select>
+    </div>
+
+    <button onclick="saveAndJoin()" id="btn-save">Enregistrer et Rejoindre</button>
+
+    <div class="meeting-list" id="meeting-list-container">
+        <h3 id="txt-saved">Mes réunions enregistrées</h3>
+        <div id="list-items"></div>
     </div>
 </div>
 
+<div class="container hidden" id="launch-ui">
+    <h1 id="txt-launching">Connexion...</h1>
+    <p id="launch-details" style="white-space: pre-line;"></p>
+    <button id="btn-cancel" onclick="cancelLaunch()">Annuler</button>
+</div>
+
 <script>
-    let launchTimeout;
-    let isCancelled = false;
-
-    // Charger les réglages au démarrage
-    window.onload = () => {
-        const params = new URLSearchParams(window.location.search);
-
-        // Vérifier Deep Link (id, pwd, name, lang, label)
-        if (params.has('id') && params.has('name')) {
-            const id = params.get('id');
-            const pwd = params.get('pwd') || '';
-            const name = params.get('name');
-            const lang = params.get('lang') || 'fr';
-            const label = params.get('label') || '';
-
-            localStorage.setItem('meetingId', id);
-            localStorage.setItem('password', pwd);
-            localStorage.setItem('displayName', name);
-            localStorage.setItem('shortcutLabel', label);
-            localStorage.setItem('isConfigured', 'true');
-
-            startCountdown(id, pwd, name, label);
-            return;
-        }
-
-        // Sinon charger depuis localStorage
-        const id = localStorage.getItem('meetingId');
-        const name = localStorage.getItem('displayName');
-        const label = localStorage.getItem('shortcutLabel') || '';
-        if (id && name) {
-            startCountdown(id, localStorage.getItem('password') || '', name, label);
+    const i18n = {
+        fr: {
+            title: "Configuration",
+            lblLabel: "Nom de la réunion (Raccourci)",
+            lblId: "ID de réunion",
+            lblPwd: "Mot de passe",
+            lblName: "Votre nom d'affichage",
+            lblLang: "Langue",
+            btnSave: "Enregistrer et Rejoindre",
+            saved: "Mes réunions enregistrées",
+            launching: "Connexion en cours...",
+            cancel: "Annuler (Appui long pour modifier)",
+            alertFill: "Veuillez remplir l'ID et votre Nom"
+        },
+        es: {
+            title: "Configuración",
+            lblLabel: "Nombre de la reunión",
+            lblId: "ID de la reunión",
+            lblPwd: "Contraseña",
+            lblName: "Tu nombre",
+            lblLang: "Idioma",
+            btnSave: "Guardar y Unirse",
+            saved: "Mis reuniones guardadas",
+            launching: "Conectando...",
+            cancel: "Cancelar (Mantener para editar)",
+            alertFill: "Por favor, rellena el ID y tu Nombre"
+        },
+        en: {
+            title: "Settings",
+            lblLabel: "Meeting Name",
+            lblId: "Meeting ID",
+            lblPwd: "Password",
+            lblName: "Your Display Name",
+            lblLang: "Language",
+            btnSave: "Save and Join",
+            saved: "My Saved Meetings",
+            launching: "Connecting...",
+            cancel: "Cancel (Long press to edit)",
+            alertFill: "Please fill ID and Name"
         }
     };
 
-    function saveAndJoin() {
-        const id = document.getElementById('meetingId').value;
-        const pwd = document.getElementById('password').value;
-        const name = document.getElementById('displayName').value;
+    let currentLang = 'fr';
+    let launchTimeout;
+    let isCancelled = false;
 
-        if (!id || !name) {
-            alert("Veuillez remplir au moins l'ID et le Nom");
+    window.onload = () => {
+        const params = new URLSearchParams(window.location.search);
+
+        // Appliquer la langue du lien ou du navigateur
+        const lang = params.get('lang') || localStorage.getItem('lang') || navigator.language.split('-')[0] || 'fr';
+        changeLang(i18n[lang] ? lang : 'fr');
+
+        // Gérer le Deep Link
+        if (params.has('id') && params.has('name')) {
+            const meeting = {
+                id: params.get('id'),
+                pwd: params.get('pwd') || '',
+                name: params.get('name'),
+                label: params.get('label') || 'Réunion'
+            };
+            saveMeeting(meeting);
+            startCountdown(meeting);
+        } else {
+            updateMeetingList();
+        }
+    };
+
+    function changeLang(lang) {
+        currentLang = lang;
+        localStorage.setItem('lang', lang);
+        document.getElementById('language').value = lang;
+
+        const t = i18n[lang];
+        document.getElementById('txt-title').innerText = t.title;
+        document.getElementById('lbl-label').innerText = t.lblLabel;
+        document.getElementById('lbl-id').innerText = t.lblId;
+        document.getElementById('lbl-pwd').innerText = t.lblPwd;
+        document.getElementById('lbl-name').innerText = t.lblName;
+        document.getElementById('lbl-lang').innerText = t.lblLang;
+        document.getElementById('btn-save').innerText = t.btnSave;
+        document.getElementById('txt-saved').innerText = t.saved;
+        document.getElementById('txt-launching').innerText = t.launching;
+        document.getElementById('btn-cancel').innerText = t.cancel;
+    }
+
+    function saveAndJoin() {
+        const meeting = {
+            id: document.getElementById('meetingId').value,
+            pwd: document.getElementById('password').value,
+            name: document.getElementById('displayName').value,
+            label: document.getElementById('label').value || 'Réunion'
+        };
+
+        if (!meeting.id || !meeting.name) {
+            alert(i18n[currentLang].alertFill);
             return;
         }
 
-        localStorage.setItem('meetingId', id);
-        localStorage.setItem('password', pwd);
-        localStorage.setItem('displayName', name);
-        localStorage.setItem('shortcutLabel', "");
-        localStorage.setItem('isConfigured', 'true');
-
-        startCountdown(id, pwd, name, "");
+        saveMeeting(meeting);
+        startCountdown(meeting);
     }
 
-    function startCountdown(id, pwd, name, label) {
+    function saveMeeting(meeting) {
+        let meetings = JSON.parse(localStorage.getItem('meetings') || '[]');
+        // Éviter les doublons par ID
+        meetings = meetings.filter(m => m.id !== meeting.id);
+        meetings.unshift(meeting);
+        localStorage.setItem('meetings', JSON.stringify(meetings.slice(0, 10))); // Garder les 10 dernières
+        updateMeetingList();
+    }
+
+    function updateMeetingList() {
+        const meetings = JSON.parse(localStorage.getItem('meetings') || '[]');
+        const list = document.getElementById('list-items');
+        list.innerHTML = '';
+
+        meetings.forEach(m => {
+            const div = document.createElement('div');
+            div.className = 'meeting-item';
+            div.onclick = () => startCountdown(m);
+            div.innerHTML = `
+                <div class="meeting-info">
+                    <div class="meeting-name">${m.label}</div>
+                    <div class="meeting-id">ID: ${m.id} - ${m.name}</div>
+                </div>
+                <button class="btn-delete" onclick="event.stopPropagation(); deleteMeeting('${m.id}')">X</button>
+            `;
+            list.appendChild(div);
+        });
+    }
+
+    function deleteMeeting(id) {
+        let meetings = JSON.parse(localStorage.getItem('meetings') || '[]');
+        meetings = meetings.filter(m => m.id !== id);
+        localStorage.setItem('meetings', JSON.stringify(meetings));
+        updateMeetingList();
+    }
+
+    function startCountdown(meeting) {
         document.getElementById('config-ui').classList.add('hidden');
         document.getElementById('launch-ui').classList.remove('hidden');
-
-        const displayLabel = label ? `${label}\n` : "";
-        document.getElementById('launch-details').innerText = `${displayLabel}ID: ${id}\nNom: ${name}`;
+        document.getElementById('launch-details').innerText = `${meeting.label}\nID: ${meeting.id}\nNom: ${meeting.name}`;
 
         isCancelled = false;
         launchTimeout = setTimeout(() => {
             if (!isCancelled) {
-                joinZoom(id, pwd, name);
+                const encodedName = encodeURIComponent(meeting.name);
+                window.location.href = `zoomus://zoom.us/join?confno=${meeting.id}&pwd=${meeting.pwd}&uname=${encodedName}`;
+                // Fallback optionnel après redirection
+                setTimeout(() => {
+                    if (!isCancelled) cancelLaunch();
+                }, 3000);
             }
         }, 2000);
-    }
-
-    function joinZoom(id, pwd, name) {
-        const encodedName = encodeURIComponent(name);
-        const zoomUri = `zoomus://zoom.us/join?confno=${id}&pwd=${pwd}&uname=${encodedName}`;
-        window.location.href = zoomUri;
-
-        // Optionnel : replier sur le lien web si zoomus:// échoue (difficile à détecter en JS pur)
-        // setTimeout(() => { window.location.href = `https://zoom.us/j/${id}?pwd=${pwd}`; }, 1000);
     }
 
     function cancelLaunch() {
@@ -158,26 +279,25 @@
         clearTimeout(launchTimeout);
         document.getElementById('launch-ui').classList.add('hidden');
         document.getElementById('config-ui').classList.remove('hidden');
-
-        // Pré-remplir les champs
-        document.getElementById('meetingId').value = localStorage.getItem('meetingId') || '';
-        document.getElementById('password').value = localStorage.getItem('password') || '';
-        document.getElementById('displayName').value = localStorage.getItem('displayName') || '';
     }
 
-    // Gestion de l'appui long pour modifier (comme sur Android)
+    // Appui long sur Annuler pour modifier les champs
     const btnCancel = document.getElementById('btn-cancel');
-    let longPressTimer;
+    let lp;
     btnCancel.onmousedown = btnCancel.ontouchstart = () => {
-        longPressTimer = setTimeout(() => {
+        lp = setTimeout(() => {
             cancelLaunch();
+            const meetings = JSON.parse(localStorage.getItem('meetings') || '[]');
+            if(meetings.length > 0) {
+                document.getElementById('meetingId').value = meetings[0].id;
+                document.getElementById('password').value = meetings[0].pwd;
+                document.getElementById('displayName').value = meetings[0].name;
+                document.getElementById('label').value = meetings[0].label;
+            }
         }, 800);
     };
-    btnCancel.onmouseup = btnCancel.onmouseleave = btnCancel.ontouchend = () => {
-        clearTimeout(longPressTimer);
-    };
+    btnCancel.onmouseup = btnCancel.ontouchend = () => clearTimeout(lp);
 
-    // Enregistrer le Service Worker
     if ('serviceWorker' in navigator) {
         navigator.serviceWorker.register('sw.js');
     }
