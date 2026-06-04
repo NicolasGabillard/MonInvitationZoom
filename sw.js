@@ -1,4 +1,4 @@
-const CACHE_NAME = 'marzoom-v1';
+const CACHE_NAME = 'marzoom-v2';
 const ASSETS = [
     './',
     './index.html',
